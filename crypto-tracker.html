@@ -68,6 +68,13 @@
   .chg.down { color: var(--down); background: var(--down-soft); }
   .empty { padding: 28px 16px; text-align: center; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
   .refresh { font: inherit; font-size: 15px; margin-top: 16px; padding: 9px 16px; border-radius: 10px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; }
+  .total { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin-bottom: 14px; }
+  .total .label { color: var(--muted); font-size: 14px; }
+  .total .value { font-family: "Bricolage Grotesque", sans-serif; font-weight: 700; font-size: 28px; }
+  .total .hint { color: var(--muted); font-size: 13px; }
+  .hold { margin-top: 6px; font-size: 13px; color: var(--muted); }
+  .hold input { width: 96px; font: inherit; font-size: 15px; padding: 4px 8px; margin-left: 6px; text-align: right; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .hold input:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
   .note { margin-top: 18px; font-size: 14px; color: var(--muted); }
 </style>
 </head>
@@ -77,6 +84,8 @@
   <p class="sub">Check prices and star your favorite coins to keep them handy.</p>
 
   <div class="status"><span class="dot" id="dot"></span><span id="statusText">Loading…</span></div>
+
+  <div class="total" id="total"></div>
 
   <div class="tabs" role="group" aria-label="Filter">
     <button class="tab" id="tabAll" aria-pressed="true">All coins</button>
@@ -114,10 +123,29 @@
   var isLive = false;
   var onlyFav = false;
   var favs = [];
+  var holds = {}; // how much of each coin you hold, e.g. { bitcoin: 0.5 }
 
   // 3) Favorites are saved in the browser (the page still works if saving fails).
   try { favs = JSON.parse(localStorage.getItem("favs") || "[]"); } catch (e) { favs = []; }
   function saveFavs() { try { localStorage.setItem("favs", JSON.stringify(favs)); } catch (e) {} }
+  try { holds = JSON.parse(localStorage.getItem("holds") || "{}") || {}; } catch (e) { holds = {}; }
+  function saveHolds() { try { localStorage.setItem("holds", JSON.stringify(holds)); } catch (e) {} }
+
+  // Portfolio total = sum of (amount held x current price)
+  function updateTotal() {
+    var sum = 0, any = false;
+    COINS.forEach(function (c) {
+      var d = data[c.id], h = holds[c.id];
+      if (d && h > 0) { sum += d.usd * h; any = true; }
+    });
+    var hint = any
+      ? (isLive ? "Based on live prices" : "Based on snapshot prices, not live")
+      : "Type how much you hold under any coin to see your total.";
+    document.getElementById("total").innerHTML =
+      '<div class="label">Portfolio value</div>' +
+      '<div class="value">$' + sum.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</div>' +
+      '<div class="hint">' + hint + '</div>';
+  }
 
   function fmtPrice(n) {
     var digits = n >= 100 ? 2 : 4;
@@ -125,6 +153,7 @@
   }
 
   function render() {
+    updateTotal();
     var box = document.getElementById("list");
     var coins = COINS.filter(function (c) { return !onlyFav || favs.indexOf(c.id) !== -1; });
     if (!coins.length) {
@@ -146,8 +175,9 @@
       var sign = ch >= 0 ? "+" : "";
       html += '<li>' + star + label +
         '<div class="right"><div class="price">' + fmtPrice(d.usd) + '</div>' +
-        '<span class="chg ' + cls + '">' + sign + ch.toFixed(2) + '% (24h)</span></div>' +
-        '</li>';
+        '<span class="chg ' + cls + '">' + sign + ch.toFixed(2) + '% (24h)</span>' +
+        '<div class="hold"><label>You hold<input type="text" inputmode="decimal" data-hold="' + c.id + '" value="' + (holds[c.id] > 0 ? holds[c.id] : "") + '" placeholder="0" aria-label="Amount of ' + c.name + ' you hold"></label></div>' +
+        '</div></li>';
     });
     html += "</ul>";
     box.innerHTML = html;
@@ -184,6 +214,14 @@
     var i = favs.indexOf(id);
     if (i === -1) favs.push(id); else favs.splice(i, 1);
     saveFavs(); render();
+  });
+
+  document.getElementById("list").addEventListener("input", function (e) {
+    var id = e.target.getAttribute("data-hold");
+    if (!id) return;
+    var v = parseFloat(e.target.value.replace(",", "."));
+    holds[id] = v > 0 ? v : 0;
+    saveHolds(); updateTotal();
   });
 
   function setTab(fav) {
