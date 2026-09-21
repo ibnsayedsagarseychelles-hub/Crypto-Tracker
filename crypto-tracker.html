@@ -221,7 +221,8 @@
   }
 
   function fmtPrice(n) {
-    var digits = n >= 100 ? 2 : 4;
+    // Tiny prices (like meme coins) need more decimals or they show as $0.00
+    var digits = n >= 100 ? 2 : n >= 0.01 ? 4 : n >= 0.0001 ? 6 : 10;
     return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: digits });
   }
 
